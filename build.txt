@@ -1,0 +1,3 @@
+displayName = Custom GameMode Library
+author = LilacIsle
+version = 0.1
