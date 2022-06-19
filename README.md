@@ -1,4 +1,4 @@
-#ModDifficultyLibrary
+# ModDifficultyLibrary
 A library for 1.4 versions of tModLoader.
 
 Makes implementing custom difficulties (akin to Expert and Master mode) simpler and more direct.
