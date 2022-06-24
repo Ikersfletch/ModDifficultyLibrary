@@ -65,7 +65,7 @@ namespace ModDifficultyLibrary
 
         private UICharacterNameButton _seedPlate;
 
-        private UIWorldCreationPreview _previewPlate;
+        private CustomUIWorldCreationPreview _previewPlate;
 
         private GroupOptionButton<WorldSizeId>[] _sizeButtons;
 
@@ -194,7 +194,7 @@ namespace ModDifficultyLibrary
             uICharacterNameButton2.SetSnapPoint("Seed", 0);
             uIElement.Append(uICharacterNameButton2);
             _seedPlate = uICharacterNameButton2;
-            UIWorldCreationPreview uIWorldCreationPreview = new UIWorldCreationPreview
+            CustomUIWorldCreationPreview uIWorldCreationPreview = new CustomUIWorldCreationPreview
             {
                 Width = StyleDimension.FromPixels(84f),
                 Height = StyleDimension.FromPixels(84f),
@@ -518,7 +518,7 @@ namespace ModDifficultyLibrary
 
         private void UpdatePreviewPlate()
         {
-            _previewPlate.UpdateOption((byte)_optionDifficulty.Item1, (byte)_optionEvil, (byte)_optionSize);
+            _previewPlate.UpdateOption(_optionDifficulty, (byte)_optionEvil, (byte)_optionSize);
         }
 
         private void UpdateSliders()

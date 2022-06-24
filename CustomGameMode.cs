@@ -55,14 +55,36 @@ namespace ModDifficultyLibrary
         /// A color tint over the preview image in the top-right of the world creation menu
         /// </summary>
         public virtual Color WorldCreationPreviewTint => Color.White;
-        public string FullName => $"{Mod.Name}/{Name}";
-        public string Name => GetType().Name;
-        public Mod Mod => ModDifficultyLibrary.Instance;
+        public virtual string FullName => $"{Mod.Name}/{Name}";
+        public virtual string Name => GetType().Name;
+        public virtual Mod Mod => ModDifficultyLibrary.Instance;
 
         /// <summary>
         /// The vanilla data values for enemy & NPC scaling. Includes toggles for Expert mode and Master mode exclusive behavior
         /// </summary>
-        public GameModeData GameModeData = GameModeData.NormalMode;
+        public virtual GameModeData GameModeData => GameModeData.NormalMode;
+
+        /// <summary>
+        /// Returns true when the Mode of the specified type is the current mode
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        /// <returns></returns>
+        public static bool IsModeActive<T>() where T : ModDifficulty
+        {
+            ModDifficulty dif = GetModDifficultyDirect<T>();
+            if (dif == null) return false;
+            return dif.IsModeActive();
+        }
+        /// <summary>
+        /// Returns true when the Difficulty matching these parameters is loaded
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        /// <returns></returns>
+        public static bool IsModeActive(string origin, string difficultyName)
+        {
+            Tuple<int, string, string> dif = GameModeSystem.Instance.CurrentDifficulty;
+            return dif.Item1 == 4 && dif.Item2 == origin && dif.Item3 == difficultyName;
+        }
 
         /// <summary>
         /// Returns true while playing in a world with this difficulty selected
@@ -73,13 +95,24 @@ namespace ModDifficultyLibrary
             Tuple<int, string, string> dif = GameModeSystem.Instance.CurrentDifficulty;
             return dif.Item1 == 4 && dif.Item2 == Mod.Name && dif.Item3 == Name;
         }
-        public static int GetModDifficulty<T>() where T : ModDifficulty{
+        /// <summary>
+        /// Returns the ID of the difficulty. Don't use this value in save data, as the loading of mods can disrupt which difficulty is given which ID.
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        /// <returns></returns>
+        public static int GetModDifficulty<T>() where T : ModDifficulty
+        {
             for (int i = 0; i < GameModeSystem.Instance.moddedDifficulties.Count; i++)
             {
                 if (GameModeSystem.Instance.moddedDifficulties[i] as T != null) return i;
             }
             return -1;
         }
+        /// <summary>
+        /// Returns the Instance of the difficulty
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        /// <returns></returns>
         public static ModDifficulty GetModDifficultyDirect<T>() where T : ModDifficulty
         {
             int index = GetModDifficulty<T>();
@@ -181,12 +214,15 @@ namespace ModDifficultyLibrary
         {
             Main.RegisteredGameModes.Remove(4);
             OnWorldItem.DrawSelf -= DrawWorldSelectItem;
+            OnUI.SetState -= ModifySetState;
         }
 
         public override void OnWorldLoad()
         {
-            if (Main.GameMode != 4 || moddedDifficultyIndex == -1) return;
-            Main.RegisteredGameModes[4] = moddedDifficulties[moddedDifficultyIndex].GameModeData;
+            if (Main.ActiveWorldFileData.GameMode != 4 || moddedDifficultyIndex == -1) return;
+            Main.RegisteredGameModes.Remove(4);
+            Main.RegisteredGameModes.Add(4,moddedDifficulties[moddedDifficultyIndex].GameModeData);
+            Main.GameMode = 4;
 
         }
         public override void OnWorldUnload()
@@ -267,9 +303,10 @@ namespace ModDifficultyLibrary
 
             ModDifficulty mode = GetGameMode(origin, difficultyName);
 
+            Main.RegisteredGameModes.Remove(4);
             if (mode == null) Main.RegisteredGameModes[4] = GameModeData.NormalMode;
-
-            Main.RegisteredGameModes[4] = mode.GameModeData;
+            else Main.RegisteredGameModes[4] = mode.GameModeData;
+            Main.GameMode = 4;
         }
 
         public Dictionary<WorldFileData, Tuple<string, Color>> cached = new Dictionary<WorldFileData, Tuple<string, Color>>();
@@ -300,12 +337,12 @@ namespace ModDifficultyLibrary
 
                 ModDifficulty gameMode = GetGameMode(origin, difficultyName);
 
-                if (gameMode == null) goto JustDrawIt;
+                if (gameMode == null) goto UnloadedMode;
 
                 text = gameMode.DisplayName;
                 color2 = gameMode.DifficultyColor;
 
-                cached.Add(data, new Tuple<string, Color>(gameMode.DisplayName, gameMode.DifficultyColor));
+                cached.Add(data, new Tuple<string, Color>(text, color2));
                 goto JustDrawIt;
             }
             else
