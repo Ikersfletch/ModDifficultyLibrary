@@ -16,3 +16,4 @@ To add as a dependancy, add `modReferences = ModDifficultyLibrary` to your mod's
 
 Currently `Mod.Call()` is not implemented as a way to interact with the library.
 
+Oh, and if anybody's curious, yes- feel free to appropriate the code for your own terraria mod, or refer to the code for your own purposes.
