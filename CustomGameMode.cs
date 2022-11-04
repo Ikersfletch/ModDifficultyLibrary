@@ -1,4 +1,6 @@
 ﻿using System;
+using MonoMod;
+using Mono.Cecil;
 using Terraria.DataStructures;
 using Terraria.ModLoader;
 using Terraria.ModLoader.IO;
@@ -15,10 +17,24 @@ using Microsoft.Xna.Framework.Graphics;
 using Terraria.UI;
 using OnWorldItem = On.Terraria.GameContent.UI.Elements.UIWorldListItem;
 using OnUI = On.Terraria.UI.UserInterface;
+using OnUIWorldCreation = On.Terraria.GameContent.UI.States.UIWorldCreation;
+using OnWorldGen = On.Terraria.WorldGen;
+using OnUIWorldCreationPreview = On.Terraria.GameContent.UI.Elements.UIWorldCreationPreview;
+using ILUIWorldCreation = IL.Terraria.GameContent.UI.States.UIWorldCreation;
 using Terraria.GameContent.UI.States;
 using Terraria.GameContent.UI.Elements;
 using Terraria.Localization;
 using Terraria.UI.Gamepad;
+using MonoMod.Cil;
+using System.Linq;
+using Mono.Cecil.Rocks;
+using Mono.Cecil.Cil;
+using System.Reflection.Emit;
+using OpCode = System.Reflection.Emit.OpCode;
+using MonoMod.Utils;
+using System.ComponentModel;
+using Terraria.WorldBuilding;
+using log4net.Core;
 
 namespace ModDifficultyLibrary
 {
@@ -203,18 +219,43 @@ namespace ModDifficultyLibrary
         }
 
 
+
         // I would make this Load(), but I'm choosing to be safe instead.
         public override void OnModLoad()
         {
             Main.RegisteredGameModes.Add(4, registeredMode);
             OnWorldItem.DrawSelf += DrawWorldSelectItem;
-            OnUI.SetState += ModifySetState;
+            //OnUI.SetState += ModifySetState;
+            OnUIWorldCreation.BuildPage += BuildPage;
+            OnUIWorldCreation.AddWorldDifficultyOptions += AddWorldDifficultyOptions;
+            OnUIWorldCreation.SetDefaultOptions += SetDefaultOptions;
+            OnUIWorldCreation.ClickDifficultyOption += ClickDifficultyOption;
+            OnUIWorldCreationPreview.DrawSelf += DrawPreviewPlate;
+            // OnUIWorldCreation.ShowOptionDescription += ShowOptionDescription;
+            /*
+            OnUIWorldCreation.UpdatePreviewPlate += UpdatePreviewPlate;
+            OnUIWorldCreation.UpdateSliders += UpdateSliders;
+            */
+            OnWorldGen.CreateNewWorld += CreateNewWorld;
+            OnUIWorldCreation.Click_GoBack += Click_GoBack;
         }
         public override void Unload()
         {
             Main.RegisteredGameModes.Remove(4);
             OnWorldItem.DrawSelf -= DrawWorldSelectItem;
-            OnUI.SetState -= ModifySetState;
+            // OnUI.SetState -= ModifySetState;
+            OnUIWorldCreation.BuildPage -= BuildPage;
+            OnUIWorldCreation.AddWorldDifficultyOptions -= AddWorldDifficultyOptions;
+            OnUIWorldCreation.SetDefaultOptions -= SetDefaultOptions;
+            OnUIWorldCreation.ClickDifficultyOption -= ClickDifficultyOption;
+            OnUIWorldCreationPreview.DrawSelf -= DrawPreviewPlate;
+            //OnUIWorldCreation.ShowOptionDescription -= ShowOptionDescription;
+            /*
+            OnUIWorldCreation.UpdatePreviewPlate -= UpdatePreviewPlate;
+            OnUIWorldCreation.UpdateSliders -= UpdateSliders;
+            */
+            OnWorldGen.CreateNewWorld -= CreateNewWorld;
+            OnUIWorldCreation.Click_GoBack -= Click_GoBack;
         }
 
         public override void OnWorldLoad()
@@ -229,6 +270,8 @@ namespace ModDifficultyLibrary
         {
             if (Main.GameMode != 4) return;
         }
+
+
 
         public ModDifficulty GetGameMode(string modOriginName, string modDifficultyName)
         {
@@ -402,5 +445,336 @@ namespace ModDifficultyLibrary
             vector.X += num4 + 5f;
 
         }
+
+        // detours galore let's go
+
+        // UIWorldCreation
+        public List<CustomGroupButton<Tuple<int, string, string>>> difficultyButtons;
+        public Tuple<int, string, string> worldCreationDifficultyValue = ClassicTuple;
+        public UIWorldCreation creation_screen;
+        public string body;
+        public void BuildPage(OnUIWorldCreation.orig_BuildPage orig, UIWorldCreation self) {
+            // this reroute just makes the world creation screen larger.
+            /*
+            MethodInfo info = self.GetType().GetMethod("SetDefaultOptions", yes);
+            byte[] arr = info.GetMethodBody().GetILAsByteArray();
+            string printme = "";
+
+            for (int i = 0; i < arr.Length; i++)
+            {
+                printme += arr[i].ToString("X2")+"\n";
+            }
+            Mod.Logger.Info(printme);
+            */
+
+            /*
+            */
+            orig(self);
+            creation_screen = self;
+            UIElement baseElement = self.Children.First<UIElement>();
+            baseElement.Width = StyleDimension.FromPercent(0.9f);
+            baseElement.Height = StyleDimension.FromPixels(434f + 18);
+            baseElement.Top = StyleDimension.FromPixels(170f - 18);
+            baseElement.HAlign = 0.5f;
+            baseElement.VAlign = 0f;
+
+
+
+        }
+
+        public void SetDefaultDifficulty()
+        {
+            if (Main.ActivePlayerFileData.Player.difficulty == 3)
+            {
+                difficultyButtons.ForEach(i => i.SetCurrentOption(JourneyTuple));
+                worldCreationDifficultyValue = JourneyTuple;
+            }
+            else
+            {
+                difficultyButtons.ForEach(i => i.SetCurrentOption(ClassicTuple));
+                worldCreationDifficultyValue = ClassicTuple;
+            }
+        }
+        public void SetDefaultOptions(OnUIWorldCreation.orig_SetDefaultOptions orig, UIWorldCreation self) {
+            /*
+            BindingFlags yes = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static;
+            Type uiworldcreation = creation_screen.GetType();
+            PropertyInfo difbuttonInfo = uiworldcreation.GetProperty("_difficultyButtons", yes);
+            Type difButtonsVanilla = difbuttonInfo.PropertyType;
+            self.GetType().GetProperty("_difficultyButtons").SetValue(creation_screen, Activator.CreateInstance(difButtonsVanilla));
+            */
+            SetDefaultDifficulty();
+            orig(self);
+
+        }
+        public UIElement fakeContainerLOL;
+        public void AddWorldDifficultyOptions(OnUIWorldCreation.orig_AddWorldDifficultyOptions orig, UIWorldCreation self, UIElement container, float accumualtedHeight, UIElement.MouseEvent clickEvent, string tagGroup, float usableWidthPercent) {
+            /*
+            */
+            if (fakeContainerLOL == null)
+            {
+                fakeContainerLOL = new UIElement();
+            }
+            fakeContainerLOL.RemoveAllChildren();
+            orig(self, fakeContainerLOL, 0, (arg1,arg2) => { }, tagGroup, 1.0f);
+
+
+            if (difficultyButtons == null)
+            {
+                difficultyButtons = new List<CustomGroupButton<Tuple<int, string, string>>>();
+            }
+            difficultyButtons.Clear();
+            List<Tuple<int, string, string>> DifficultyIndex = new List<Tuple<int, string, string>>
+            {
+                JourneyTuple,
+                ClassicTuple,
+                ExpertTuple,
+                MasterTuple
+            };
+            List<string> ButtonText = new List<string>
+            {
+                Language.GetTextValue("UI.Creative"),
+                Language.GetTextValue("UI.Normal"),
+                Language.GetTextValue("UI.Expert"),
+                Language.GetTextValue("UI.Master")
+            };
+            List<string> DescriptionText = new List<string>
+            {
+                Language.GetTextValue("UI.WorldDescriptionCreative"),
+                Language.GetTextValue("UI.WorldDescriptionNormal"),
+                Language.GetTextValue("UI.WorldDescriptionExpert"),
+                Language.GetTextValue("UI.WorldDescriptionMaster")
+            };
+            List<Color> TextColor = new List<Color>
+            {
+                Main.creativeModeColor,
+                Color.White,
+                Main.mcColor,
+                Main.hcColor
+            };
+            List<Asset<Texture2D>> Icons = new List<Asset<Texture2D>>
+            {
+                Main.Assets.Request<Texture2D>("Images/UI/WorldCreation/IconDifficultyCreative"),
+                Main.Assets.Request<Texture2D>("Images/UI/WorldCreation/IconDifficultyNormal"),
+                Main.Assets.Request<Texture2D>("Images/UI/WorldCreation/IconDifficultyExpert"),
+                Main.Assets.Request<Texture2D>("Images/UI/WorldCreation/IconDifficultyMaster")
+            };
+
+            GameModeSystem.Instance.moddedDifficulties.ForEach(difficulty =>
+            {
+                DifficultyIndex.Add(new Tuple<int, string, string>(4, difficulty.Mod.Name, difficulty.Name));
+                ButtonText.Add(difficulty.DisplayName);
+                DescriptionText.Add(difficulty.Description);
+                TextColor.Add(difficulty.DifficultyColor);
+                Icons.Add(difficulty.WorldCreationButtonIcon);
+            });
+
+            int buttonCount = DifficultyIndex.Count;
+
+            for (int i = 0; i < buttonCount; i++)
+            {
+                CustomGroupButton<Tuple<int, string, string>> button = new CustomGroupButton<Tuple<int, string, string>>(DifficultyIndex[i], ButtonText[i], DescriptionText[i], TextColor[i], Icons[i], 1f, 1f, 16f);
+                button.Width = StyleDimension.FromPixelsAndPercent(-1 * (buttonCount - 1), 1f / buttonCount * usableWidthPercent);
+                button.Left = StyleDimension.FromPercent(1f - usableWidthPercent);
+                button.HAlign = i / (float)(buttonCount - 1);
+                button.Top.Set(accumualtedHeight, 0f);
+                button.OnMouseDown += clickEvent;
+                button.OnMouseOver += ShowOptionDescription;
+                button.OnMouseOut += self.ClearOptionDescription;
+                button.SetSnapPoint(tagGroup, i);
+                container.Append(button);
+                difficultyButtons.Add(button);
+            }
+            //orig(self, container, accumualtedHeight, clickEvent, tagGroup, usableWidthPercent);
+        }
+        public void ClickDifficultyOption(OnUIWorldCreation.orig_ClickDifficultyOption orig, UIWorldCreation self, UIMouseEvent evt, UIElement listeningElement)
+        {
+            CustomGroupButton<Tuple<int, string, string>> groupOptionButton = (CustomGroupButton<Tuple<int, string, string>>)listeningElement;
+            worldCreationDifficultyValue = groupOptionButton.OptionValue;
+            difficultyButtons.ForEach(button => button.SetCurrentOption(worldCreationDifficultyValue));
+        }
+        public void UpdatePreviewPlate(OnUIWorldCreation.orig_UpdatePreviewPlate orig, UIWorldCreation self) { }
+        public void UpdateSliders(OnUIWorldCreation.orig_UpdateSliders orig, UIWorldCreation self) { }
+        /*
+        public void ShowOptionDescription(OnUIWorldCreation.orig_ShowOptionDescription orig, UIWorldCreation self, UIMouseEvent evt, UIElement listeningElement) {
+            if (listeningElement is CustomGroupButton<Tuple<int, string, string>>)
+            {
+                CustomGroupButton<Tuple<int, string, string>> customGroupButton = (CustomGroupButton<Tuple<int, string, string>>)listeningElement;
+
+                UIState currentScreen = UserInterface.ActiveInstance.CurrentState;
+                UIWorldCreation creationScreen = (UIWorldCreation)currentScreen;
+                BindingFlags yes = BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
+                PropertyInfo prop = creationScreen.GetType().GetProperty("_descriptionText", yes);
+                UIText desc = (UIText)prop.GetValue(creationScreen);
+                desc.SetText(customGroupButton.Description);
+
+
+                /*
+                Type uiType = self.GetType();
+                PropertyInfo info = uiType.GetProperty("_descriptionText", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static);
+                UIText val = info.GetValue(self) as UIText;
+                val.SetText(groupOptionButton2.Description);
+                
+
+            }
+            orig(self, evt, listeningElement);
+        }
+        */
+        
+        public void ShowOptionDescription(UIMouseEvent evt, UIElement listeningElement)
+        {
+            if (listeningElement is CustomGroupButton<Tuple<int, string, string>>)
+            {
+                CustomGroupButton<Tuple<int, string, string>> customGroupButton = (CustomGroupButton<Tuple<int, string, string>>)listeningElement;
+
+                UIState currentScreen = UserInterface.ActiveInstance.CurrentState;
+                UIWorldCreation creationScreen = (UIWorldCreation)currentScreen;
+                BindingFlags yes = BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
+                FieldInfo prop = creationScreen.GetType().GetField("_descriptionText", yes);
+                UIText desc = (UIText)prop.GetValue(creationScreen);
+                desc.SetText(customGroupButton.Description);
+            }
+        }
+        
+        public System.Threading.Tasks.Task CreateNewWorld(OnWorldGen.orig_CreateNewWorld orig, GenerationProgress progress)
+        {
+            CurrentDifficulty = worldCreationDifficultyValue;
+            Main.GameMode = CurrentDifficulty.Item1;
+            if (CurrentDifficulty.Item1 == 4)
+            {
+                Main.RegisteredGameModes.Remove(4);
+                Main.RegisteredGameModes.Add(4, GetGameMode(worldCreationDifficultyValue.Item2, worldCreationDifficultyValue.Item3).GameModeData);
+            }
+            return orig(progress);
+        }
+
+        public void Click_GoBack(OnUIWorldCreation.orig_Click_GoBack orig, UIWorldCreation self, UIMouseEvent evt, UIElement listeningElement) {
+            if (difficultyButtons != null) 
+             difficultyButtons.Clear();
+            fakeContainerLOL.RemoveAllChildren();
+            fakeContainerLOL.Remove();
+            fakeContainerLOL = null;
+            Mod.Logger.Info(body);
+            orig(self,evt, listeningElement);
+        }
+
+
+        //UIWorldCreationPreview
+        public void DrawPreviewPlate(OnUIWorldCreationPreview.orig_DrawSelf orig, UIWorldCreationPreview self, SpriteBatch spriteBatch)
+        {
+            Texture2D _BorderTexture = (Texture2D) Main.Assets.Request<Texture2D>("Images/UI/WorldCreation/PreviewBorder");
+            Texture2D _BackgroundNormalTexture = (Texture2D) Main.Assets.Request<Texture2D>("Images/UI/WorldCreation/PreviewDifficultyNormal1");
+            Texture2D _BackgroundExpertTexture = (Texture2D) Main.Assets.Request<Texture2D>("Images/UI/WorldCreation/PreviewDifficultyExpert1");
+            Texture2D _BackgroundMasterTexture = (Texture2D) Main.Assets.Request<Texture2D>("Images/UI/WorldCreation/PreviewDifficultyMaster1");
+            Texture2D _BunnyNormalTexture = (Texture2D) Main.Assets.Request<Texture2D>("Images/UI/WorldCreation/PreviewDifficultyNormal2");
+            Texture2D _BunnyExpertTexture = (Texture2D)Main.Assets.Request<Texture2D>("Images/UI/WorldCreation/PreviewDifficultyExpert2");
+            Texture2D _BunnyCreativeTexture = (Texture2D)Main.Assets.Request<Texture2D>("Images/UI/WorldCreation/PreviewDifficultyCreative2");
+            Texture2D _BunnyMasterTexture = (Texture2D)Main.Assets.Request<Texture2D>("Images/UI/WorldCreation/PreviewDifficultyMaster2");
+            Texture2D _EvilRandomTexture = (Texture2D)Main.Assets.Request<Texture2D>("Images/UI/WorldCreation/PreviewEvilRandom");
+            Texture2D _EvilCorruptionTexture = (Texture2D)Main.Assets.Request<Texture2D>("Images/UI/WorldCreation/PreviewEvilCorruption");
+            Texture2D _EvilCrimsonTexture = (Texture2D)Main.Assets.Request<Texture2D>("Images/UI/WorldCreation/PreviewEvilCrimson");
+            Texture2D _SizeSmallTexture = (Texture2D)Main.Assets.Request<Texture2D>("Images/UI/WorldCreation/PreviewSizeSmall");
+            Texture2D _SizeMediumTexture = (Texture2D)Main.Assets.Request<Texture2D>("Images/UI/WorldCreation/PreviewSizeMedium");
+            Texture2D _SizeLargeTexture = (Texture2D)Main.Assets.Request<Texture2D>("Images/UI/WorldCreation/PreviewSizeLarge");
+            CalculatedStyle dimensions = self.GetDimensions();
+            Vector2 position = new Vector2(dimensions.X + 4f, dimensions.Y + 4f);
+            Color color = Color.White;
+
+
+            BindingFlags yes = BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
+            byte _evil = (byte)self.GetType().GetField("_evil", yes).GetValue(self);
+            byte _size = (byte)self.GetType().GetField("_size", yes).GetValue(self);
+
+            switch (worldCreationDifficultyValue.Item1)
+            {
+                case 0:
+                case 3:
+                    spriteBatch.Draw(_BackgroundNormalTexture, position, Color.White);
+                    color = Color.White;
+                    break;
+                case 1:
+                    spriteBatch.Draw(_BackgroundExpertTexture, position, Color.White);
+                    color = Color.DarkGray;
+                    break;
+                case 2:
+                    spriteBatch.Draw(_BackgroundMasterTexture, position, Color.White);
+                    color = Color.DarkGray;
+                    break;
+                case 4:
+
+                    ModDifficulty dif = GameModeSystem.Instance.GetGameMode(worldCreationDifficultyValue.Item2, worldCreationDifficultyValue.Item3);
+
+                    if (dif == null)
+                    {
+                        spriteBatch.Draw(_BackgroundNormalTexture, position, Color.White);
+                        color = Color.White;
+                        break;
+                    }
+
+                    spriteBatch.Draw(dif.WorldCreationPreviewSky.Value, position, Color.White);
+                    color = dif.WorldCreationPreviewTint;
+                    break;
+            }
+
+            switch (_size)
+            {
+                case 0:
+                    spriteBatch.Draw(_SizeSmallTexture, position, color);
+                    break;
+                case 1:
+                    spriteBatch.Draw(_SizeMediumTexture, position, color);
+                    break;
+                case 2:
+                    spriteBatch.Draw(_SizeLargeTexture, position, color);
+                    break;
+            }
+
+            switch (_evil)
+            {
+                case 0:
+                    spriteBatch.Draw(_EvilRandomTexture, position, color);
+                    break;
+                case 1:
+                    spriteBatch.Draw(_EvilCorruptionTexture, position, color);
+                    break;
+                case 2:
+                    spriteBatch.Draw(_EvilCrimsonTexture, position, color);
+                    break;
+            }
+
+            switch (worldCreationDifficultyValue.Item1)
+            {
+                case 0:
+                    spriteBatch.Draw(_BunnyNormalTexture, position, color);
+                    break;
+                case 1:
+                    spriteBatch.Draw(_BunnyExpertTexture, position, color);
+                    break;
+                case 2:
+                    spriteBatch.Draw(_BunnyMasterTexture, position, color * 1.2f);
+                    break;
+                case 3:
+                    spriteBatch.Draw(_BunnyCreativeTexture, position, color);
+                    break;
+                case 4:
+
+                    ModDifficulty dif = GameModeSystem.Instance.GetGameMode(worldCreationDifficultyValue.Item2, worldCreationDifficultyValue.Item3);
+
+                    if (dif == null)
+                    {
+                        spriteBatch.Draw(_BunnyCreativeTexture, position, color);
+                        break;
+                    }
+
+                    spriteBatch.Draw(dif.WorldCreationPreviewBunny.Value, position, color);
+                    break;
+            }
+
+            spriteBatch.Draw(_BorderTexture, new Vector2(dimensions.X, dimensions.Y), Color.White);
+        }
+
+
+
+
     }
 }
